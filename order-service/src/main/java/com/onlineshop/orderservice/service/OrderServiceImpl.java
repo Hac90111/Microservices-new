@@ -1,5 +1,6 @@
 package com.onlineshop.orderservice.service;
 
+import com.onlineshop.orderservice.dto.InventoryResponse;
 import com.onlineshop.orderservice.dto.OrderLineItemsDto;
 import com.onlineshop.orderservice.dto.OrderRequest;
 import com.onlineshop.orderservice.model.Order;
@@ -9,7 +10,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.reactive.function.client.WebClient;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -19,13 +22,33 @@ import java.util.UUID;
 public class OrderServiceImpl implements  OrderService {
     @Autowired
     private OrderRepository repository;
+
+    @Autowired
+    private WebClient webClient;
     @Override
     public void placeOrder(OrderRequest orderRequest) {
         Order order= new Order();
         order.setOrderNumber(UUID.randomUUID().toString());
         List<OrderLineItems> orderLineItems = orderRequest.getOrderLineItemsDtoList().stream().map(this::mapToDto).toList();
         order.setOrderLineItems(orderLineItems);
-        repository.save(order);
+        List<String> skuCodes = order.getOrderLineItems().stream().map(OrderLineItems::getSkuCode).toList();
+
+        //Call InventoryService, and place orders only if it's in stock
+        //retrieve() // it will retrieve the response
+        //bodyToMono(Boolean.class)// it will read response
+        // .block();// it will do Async call
+        InventoryResponse[] inventoryResponses = webClient.get().uri("http://localhost:5050/api/inventory",
+                        uriBuilder -> uriBuilder.queryParam("skuCode", skuCodes).build())
+                .retrieve()
+                .bodyToMono(InventoryResponse[].class)
+                .block();
+        boolean allProductsInStock = Arrays.stream(inventoryResponses).allMatch(InventoryResponse::isInStock);
+
+        if (allProductsInStock){
+            repository.save(order);
+        }else {
+            throw new IllegalArgumentException("Product is out of stock, please try later...");
+        }
     }
 
     private OrderLineItems mapToDto(OrderLineItemsDto orderLineItemsDto) {
