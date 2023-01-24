@@ -24,7 +24,7 @@ public class OrderServiceImpl implements  OrderService {
     private OrderRepository repository;
 
     @Autowired
-    private WebClient webClient;
+    private WebClient.Builder webClientBuilder;
     @Override
     public void placeOrder(OrderRequest orderRequest) {
         Order order= new Order();
@@ -37,7 +37,7 @@ public class OrderServiceImpl implements  OrderService {
         //retrieve() // it will retrieve the response
         //bodyToMono(Boolean.class)// it will read response
         // .block();// it will do Async call
-        InventoryResponse[] inventoryResponses = webClient.get().uri("http://localhost:5050/api/inventory",
+        InventoryResponse[] inventoryResponses = webClientBuilder.build().get().uri("http://inventory-service/api/inventory",
                         uriBuilder -> uriBuilder.queryParam("skuCode", skuCodes).build())
                 .retrieve()
                 .bodyToMono(InventoryResponse[].class)
