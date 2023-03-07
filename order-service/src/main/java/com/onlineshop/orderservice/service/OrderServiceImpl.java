@@ -3,12 +3,16 @@ package com.onlineshop.orderservice.service;
 import com.onlineshop.orderservice.dto.InventoryResponse;
 import com.onlineshop.orderservice.dto.OrderLineItemsDto;
 import com.onlineshop.orderservice.dto.OrderRequest;
+import com.onlineshop.orderservice.event.OrderPlacedEvent;
 import com.onlineshop.orderservice.model.Order;
 import com.onlineshop.orderservice.model.OrderLineItems;
 import com.onlineshop.orderservice.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -22,10 +26,13 @@ import java.util.UUID;
 public class OrderServiceImpl implements  OrderService {
     @Autowired
     private OrderRepository repository;
+    @Autowired
+    private KafkaTemplate<String, OrderPlacedEvent> kafkaTemplate;
 
     @Autowired
     private WebClient.Builder webClientBuilder;
     @Override
+    @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED, rollbackFor = IllegalArgumentException.class)
     public void placeOrder(OrderRequest orderRequest) {
         Order order= new Order();
         order.setOrderNumber(UUID.randomUUID().toString());
@@ -46,6 +53,7 @@ public class OrderServiceImpl implements  OrderService {
 
         if (allProductsInStock){
             repository.save(order);
+            kafkaTemplate.send("notificationTopic", new OrderPlacedEvent(order.getOrderNumber()));
         }else {
             throw new IllegalArgumentException("Product is out of stock, please try later...");
         }
